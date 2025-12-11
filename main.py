@@ -30,6 +30,7 @@ heartbeats = 0
 viewers = 0
 last_check = 0
 
+# --- الدوال كما هي ---
 def clean_channel_name(name):
     if "kick.com/" in name:
         parts = name.split("kick.com/")
@@ -55,7 +56,6 @@ def get_channel_info(name):
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/37.0.2062.94 Chrome/37.0.2062.94 Safari/537.36',
             'sec-ch-ua-platform': '"Windows"',
         })
-        
         try:
             response = s.get(f'https://kick.com/api/v2/channels/{name}')
             if response.status_code == 200:
@@ -66,7 +66,6 @@ def get_channel_info(name):
                 return channel_id
         except:
             pass
-        
         try:
             response = s.get(f'https://kick.com/api/v1/channels/{name}')
             if response.status_code == 200:
@@ -77,12 +76,10 @@ def get_channel_info(name):
                 return channel_id
         except:
             pass
-        
         try:
             response = s.get(f'https://kick.com/{name}')
             if response.status_code == 200:
                 import re
-                
                 patterns = [
                     r'"id":(\d+).*?"slug":"' + re.escape(name) + r'"',
                     r'"channel_id":(\d+)',
@@ -93,7 +90,6 @@ def get_channel_info(name):
                     if match:
                         channel_id = int(match.group(1))
                         break
-                
                 stream_patterns = [
                     r'"livestream":\s*\{[^}]*"id":(\d+)',
                     r'livestream.*?"id":(\d+)',
@@ -103,12 +99,10 @@ def get_channel_info(name):
                     if match:
                         stream_id = int(match.group(1))
                         break
-                
                 if channel_id:
                     return channel_id
         except:
             pass
-        
         print(f"Failed to get info for: {name}")
         return None
     except Exception as e:
@@ -120,6 +114,7 @@ def get_channel_info(name):
         if stream_id:
             print(f"Stream ID: {stream_id}")
 
+# --- دوال WebSocket ---
 def get_token():
     try:
         s = tls_client.Session(client_identifier="chrome_120", random_tls_extension_order=True)
@@ -137,7 +132,6 @@ def get_token():
             'sec-ch-ua-mobile': '?0',
             'sec-ch-ua-platform': '"Windows"',
         })
-        
         try:
             s.get("https://kick.com")
             s.headers["X-CLIENT-TOKEN"] = CLIENT_TOKEN
@@ -149,7 +143,6 @@ def get_token():
                     return token
         except:
             pass
-        
         endpoints = [
             'https://websockets.kick.com/viewer/v1/token',
             'https://kick.com/api/websocket/token',
@@ -174,7 +167,6 @@ def get_viewer_count():
     global viewers, last_check
     if not stream_id:
         return 0
-    
     try:
         s = tls_client.Session(client_identifier="chrome_120", random_tls_extension_order=True)
         s.headers.update({
@@ -193,10 +185,8 @@ def get_viewer_count():
             'sec-ch-ua-mobile': '?0',
             'sec-ch-ua-platform': '"Windows"',
         })
-        
         url = f"https://kick.com/current-viewers?ids[]={stream_id}"
         response = s.get(url)
-        
         if response.status_code == 200:
             data = response.json()
             if isinstance(data, list) and len(data) > 0:
@@ -211,28 +201,23 @@ def show_stats():
     global stop, start_time, connections, attempts, pings, heartbeats, viewers, last_check
     print("\n\n\n")
     os.system('cls' if os.name == 'nt' else 'clear')
-    
     while not stop:
         try:
             now = time.time()
-            
             if now - last_check >= 5:
                 get_viewer_count()
-            
             with lock:
                 if start_time:
                     elapsed = datetime.datetime.now() - start_time
                     duration = f"{int(elapsed.total_seconds())}s"
                 else:
                     duration = "0s"
-                
                 ws_count = connections
                 ws_attempts = attempts
                 ping_count = pings
                 heartbeat_count = heartbeats
                 stream_display = stream_id if stream_id else 'N/A'
                 viewer_display = viewers if viewers else 'N/A'
-            
             print("\033[3A", end="")
             print(f"\033[2K\r[x] Connections: \033[32m{ws_count}\033[0m | Attempts: \033[32m{ws_attempts}\033[0m")
             print(f"\033[2K\r[x] Pings: \033[32m{ping_count}\033[0m | Heartbeats: \033[32m{heartbeat_count}\033[0m | Duration: \033[32m{duration}\033[0m | Stream ID: \033[32m{stream_display}\033[0m")
@@ -250,17 +235,14 @@ def send_connection():
     active += 1
     with lock:
         attempts += 1
-    
     try:
         token = get_token()
         if not token:
             return
-        
         if not channel_id:
             channel_id = get_channel_info(channel)
             if not channel_id:
                 return
-        
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -281,14 +263,12 @@ def send_connection():
 async def websocket_handler(token):
     global connections, stop, channel_id, heartbeats, pings
     connected = False
-    
     try:
         url = f"wss://websockets.kick.com/viewer/v1/connect?token={token}"
         async with websockets.connect(url) as ws:
             with lock:
                 connections += 1
             connected = True
-            
             handshake = {
                 "type": "channel_handshake",
                 "data": {"message": {"channelId": channel_id}}
@@ -296,7 +276,6 @@ async def websocket_handler(token):
             await ws.send(json.dumps(handshake))
             with lock:
                 heartbeats += 1
-            
             ping_count = 0
             while not stop and ping_count < 10:
                 ping_count += 1
@@ -304,7 +283,6 @@ async def websocket_handler(token):
                 await ws.send(json.dumps(ping))
                 with lock:
                     pings += 1
-                
                 sleep_time = 12 + random.randint(1, 5)
                 await asyncio.sleep(sleep_time)
     except:
@@ -323,10 +301,8 @@ def run(thread_count, channel_name):
     start_time = datetime.datetime.now()
     channel_id = get_channel_info(channel)
     threads = []
-    
     stats_thread = Thread(target=show_stats, daemon=True)
     stats_thread.start()
-    
     while True:
         for i in range(max_threads):
             if thread_limit.acquire():
@@ -335,7 +311,6 @@ def run(thread_count, channel_name):
                 t.daemon = True
                 t.start()
                 time.sleep(0.35)
-        
         if stop:
             for _ in range(max_threads):
                 try:
@@ -343,33 +318,21 @@ def run(thread_count, channel_name):
                 except:
                     pass
             break
-    
     for t in threads:
         t.join()
 
-
-
+# --- الجزء المعدل لقراءة القناة من Environment Variable ---
 if __name__ == "__main__":
     try:
         os.system('cls' if os.name == 'nt' else 'clear')
-        channel_input = input("Enter channel name or URL: ").strip()
+        channel_input = os.environ.get("darai99999")  # <--- هنا القناة من Env
         if not channel_input:
-            print("Channel name needed.")
+            print("CHANNEL_NAME not set in environment variables.")
             sys.exit(1)
-        
-        while True:
-            try:
-                thread_input = int(input("Enter number of viewers: ").strip())
-                if thread_input > 0:
-                    break
-                else:
-                    print("Must be greater than 0")
-            except ValueError:
-                print("Enter a valid number")
-        
+
+        thread_input = int(os.environ.get("THREAD_COUNT", "10"))  # عدد المشاهدين من Env أو 10
         run(thread_input, channel_input)
     except KeyboardInterrupt:
         stop = True
         print("Stopping...")
-
         sys.exit(0)
